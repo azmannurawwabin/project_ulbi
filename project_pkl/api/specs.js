@@ -22,30 +22,30 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const { id } = req.query;
-      if (id) {
-        const { data, error } = await supabase.from('labs').select('*').eq('id', id).limit(1);
-        if (error) throw error;
-        return res.status(200).json(data?.[0] ?? null);
-      }
-      const { data, error } = await supabase.from('labs').select('*').order('code', { ascending: true });
+      const { lab_id } = req.query;
+      let q = supabase.from('pc_specs').select('*, labs(code,name)').order('pc_id', { ascending: true });
+      if (lab_id) q = q.eq('lab_id', lab_id);
+      const { data, error } = await q;
       if (error) throw error;
       return res.status(200).json(data);
     }
     if (req.method === 'POST') {
       const user = await requireUser(req, res);
       if (!user) return;
-      const { code, name, floor, total_pc, description, status } = req.body || {};
-      if (!code || !name) return res.status(400).json({ error: 'Kode dan nama lab wajib diisi' });
+      const { lab_id, pc_id, processor, ram, storage, gpu, monitor, os, status } = req.body || {};
+      if (!lab_id || !pc_id) return res.status(400).json({ error: 'Lab dan Nomor PC wajib diisi' });
       const { data, error } = await supabase
-        .from('labs')
+        .from('pc_specs')
         .insert({
-          code: String(code).trim(),
-          name: String(name).trim(),
-          floor: floor ? String(floor).trim() : null,
-          total_pc: Number(total_pc) || 0,
-          description: description ? String(description).trim() : null,
-          status: status || 'aktif',
+          lab_id,
+          pc_id: String(pc_id).trim().toUpperCase(),
+          processor: processor || null,
+          ram: ram || null,
+          storage: storage || null,
+          gpu: gpu || null,
+          monitor: monitor || null,
+          os: os || null,
+          status: status || 'baik',
         })
         .select()
         .single();
@@ -55,16 +55,19 @@ export default async function handler(req, res) {
     if (req.method === 'PUT') {
       const user = await requireUser(req, res);
       if (!user) return;
-      const { id, code, name, floor, total_pc, description, status } = req.body || {};
-      if (!id) return res.status(400).json({ error: 'ID lab wajib diisi' });
+      const { id, lab_id, pc_id, processor, ram, storage, gpu, monitor, os, status } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'ID spesifikasi wajib diisi' });
       const payload = {};
-      if (code !== undefined) payload.code = String(code).trim();
-      if (name !== undefined) payload.name = String(name).trim();
-      if (floor !== undefined) payload.floor = floor ? String(floor).trim() : null;
-      if (total_pc !== undefined) payload.total_pc = Number(total_pc) || 0;
-      if (description !== undefined) payload.description = description ? String(description).trim() : null;
+      if (lab_id !== undefined) payload.lab_id = lab_id;
+      if (pc_id !== undefined) payload.pc_id = String(pc_id).trim().toUpperCase();
+      if (processor !== undefined) payload.processor = processor || null;
+      if (ram !== undefined) payload.ram = ram || null;
+      if (storage !== undefined) payload.storage = storage || null;
+      if (gpu !== undefined) payload.gpu = gpu || null;
+      if (monitor !== undefined) payload.monitor = monitor || null;
+      if (os !== undefined) payload.os = os || null;
       if (status !== undefined) payload.status = status;
-      const { data, error } = await supabase.from('labs').update(payload).eq('id', id).select().single();
+      const { data, error } = await supabase.from('pc_specs').update(payload).eq('id', id).select().single();
       if (error) throw error;
       return res.status(200).json(data);
     }
@@ -72,14 +75,14 @@ export default async function handler(req, res) {
       const user = await requireUser(req, res);
       if (!user) return;
       const { id } = req.body || {};
-      if (!id) return res.status(400).json({ error: 'ID lab wajib diisi' });
-      const { error } = await supabase.from('labs').delete().eq('id', id);
+      if (!id) return res.status(400).json({ error: 'ID spesifikasi wajib diisi' });
+      const { error } = await supabase.from('pc_specs').delete().eq('id', id);
       if (error) throw error;
       return res.status(200).json({ ok: true });
     }
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
-    console.error('API labs error:', err);
+    console.error('API specs error:', err);
     return res.status(500).json({ error: err.message });
   }
 }

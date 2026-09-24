@@ -1,169 +1,172 @@
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Camera, Check, Copy, Search, StickyNote, User } from 'lucide-react';
-import { api, formatDateTime } from '../lib/api';
-import type { Ticket } from '../lib/api';
-import { Button, Card, PageHeader, TicketPipeline, TicketStatusBadge } from '../components/ui';
+import { Search, ChevronLeft, CheckCircle2, Circle, Wrench, MapPin, Monitor, User, CalendarClock } from 'lucide-react';
+import { apiFetch, formatDateTime, STATUS_LABEL } from '../lib/api';
+import type { Report } from '../lib/api';
+import { inputCls, btnPrimary, Spinner, StatusBadge } from '../components/ui';
 
-type Phase = 'idle' | 'loading' | 'found' | 'notfound' | 'error';
+const steps = ['diterima', 'diproses', 'selesai'];
 
 export default function TrackTicket() {
   const [params] = useSearchParams();
-  const [q, setQ] = useState(params.get('tiket') || '');
-  const [phase, setPhase] = useState<Phase>('idle');
-  const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [ticket, setTicket] = useState(params.get('tiket') || '');
+  const [report, setReport] = useState<Report | null>(null);
+  const [searched, setSearched] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const search = async (ticketNo: string) => {
-    const no = ticketNo.trim();
-    if (!no) return;
-    setPhase('loading');
-    setTicket(null);
+    const q = ticketNo.trim();
+    if (!q) return;
+    setLoading(true);
+    setError('');
+    setSearched(false);
     try {
-      const row = await api.tickets.getByNo(no);
-      if (row) {
-        setTicket(row);
-        setPhase('found');
-      } else {
-        setPhase('notfound');
-      }
-    } catch {
-      setPhase('error');
+      const data = await apiFetch<Report[]>(`/api/reports?ticket=${encodeURIComponent(q)}`);
+      setReport(data[0] ?? null);
+      setSearched(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal melacak tiket');
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    document.title = 'Lacak Tiket — SIMLAB-TIK';
-    const preset = params.get('tiket');
-    if (preset) search(preset);
+    const t = params.get('tiket');
+    if (t) search(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const copyNo = async () => {
-    if (!ticket) return;
-    try {
-      await navigator.clipboard.writeText(ticket.ticket_no);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* abaikan */
-    }
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    search(ticket);
   };
 
+  const currentIdx = report ? steps.indexOf(report.status) : -1;
+
   return (
-    <div className="mx-auto max-w-3xl">
-      <PageHeader title="Lacak Status Laporan" description="Masukkan nomor tiket yang Anda terima saat melapor untuk melihat progres penanganan." />
-
-      <Card className="p-5 sm:p-6">
-        <form
-          onSubmit={(e) => { e.preventDefault(); search(q); }}
-          className="flex flex-col gap-2 sm:flex-row"
-        >
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value.toUpperCase())}
-              placeholder="cth: TIK-260915-K7Q2"
-              className="block h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 font-mono text-sm tracking-wide text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
-            />
-          </div>
-          <Button type="submit" variant="primary" loading={phase === 'loading'} className="h-10">Lacak Tiket</Button>
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <Link to="/" className="inline-flex items-center gap-1 text-sm font-medium text-zinc-600 hover:text-zinc-900">
+        <ChevronLeft size={16} /> Kembali ke Beranda
+      </Link>
+      <div className="mt-4 rounded-lg border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
+        <h1 className="text-xl font-bold text-zinc-900">Lacak Status Tiket</h1>
+        <p className="mt-1 text-sm text-zinc-500">
+          Masukkan nomor tiket (cth: <span className="font-mono font-semibold">TIK-482910</span>) untuk melihat progres
+          penanganan laporan Anda.
+        </p>
+        <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-2 sm:flex-row">
+          <input
+            className={`${inputCls} font-mono uppercase sm:flex-1`}
+            placeholder="TIK-XXXXXX"
+            value={ticket}
+            onChange={(e) => setTicket(e.target.value.toUpperCase())}
+          />
+          <button type="submit" disabled={loading || !ticket.trim()} className={btnPrimary}>
+            <Search size={16} /> {loading ? 'Mencari...' : 'Lacak'}
+          </button>
         </form>
-        <p className="mt-2 text-xs text-slate-500">Nomor tiket tercantum pada halaman konfirmasi setelah laporan dikirim.</p>
-      </Card>
-
-      <div className="mt-5">
-        {phase === 'idle' && (
-          <Card className="border-dashed p-8 text-center">
-            <Search className="mx-auto h-6 w-6 text-slate-300" />
-            <p className="mt-2 text-sm text-slate-500">Belum ada pencarian. Masukkan nomor tiket pada kolom di atas.</p>
-          </Card>
-        )}
-
-        {phase === 'loading' && (
-          <Card className="p-8 text-center text-sm text-slate-500">Mencari tiket...</Card>
-        )}
-
-        {phase === 'notfound' && (
-          <div className="rounded-md border border-amber-200 bg-white p-6 text-center">
-            <AlertTriangle className="mx-auto h-6 w-6 text-amber-500" />
-            <p className="mt-2 text-sm font-semibold text-slate-900">Tiket tidak ditemukan</p>
-            <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
-              Periksa kembali nomor tiket yang Anda masukkan. Format yang benar diawali <span className="font-mono text-[13px]">TIK-</span> diikuti tanggal dan kode unik.
-            </p>
+        {error && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
           </div>
         )}
-
-        {phase === 'error' && (
-          <div className="rounded-md border border-red-200 bg-white p-6 text-center">
-            <AlertTriangle className="mx-auto h-6 w-6 text-red-500" />
-            <p className="mt-2 text-sm font-semibold text-slate-900">Terjadi kesalahan</p>
-            <p className="mt-1 text-sm text-slate-500">Gagal menghubungi server. Silakan coba beberapa saat lagi.</p>
+        {loading && <Spinner label="Mencari tiket..." />}
+        {!loading && searched && !report && (
+          <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+            Nomor tiket <span className="font-mono font-bold">{ticket.trim().toUpperCase()}</span> tidak ditemukan.
+            Periksa kembali nomor tiket Anda.
           </div>
         )}
-
-        {phase === 'found' && ticket && (
-          <Card className="overflow-hidden">
-            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-lg font-semibold tracking-tight text-slate-900">{ticket.ticket_no}</p>
-                    <button onClick={copyNo} className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700" title="Salin nomor tiket">
-                      {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-                    </button>
+        {!loading && report && (
+          <div className="mt-6">
+            {/* Timeline */}
+            <div className="flex items-center">
+              {steps.map((s, i) => {
+                const passed = i < currentIdx;
+                const current = i === currentIdx;
+                return (
+                  <div key={s} className={`flex items-center ${i < steps.length - 1 ? 'flex-1' : ''}`}>
+                    <div className="flex flex-col items-center">
+                      <span
+                        className={`flex h-9 w-9 items-center justify-center rounded-full border-2 ${
+                          passed || current
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-zinc-200 bg-white text-zinc-300'
+                        }`}
+                      >
+                        {passed ? <CheckCircle2 size={18} /> : current ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                      </span>
+                      <span
+                        className={`mt-1.5 text-xs font-semibold ${passed || current ? 'text-zinc-900' : 'text-zinc-400'}`}
+                      >
+                        {STATUS_LABEL[s]}
+                      </span>
+                    </div>
+                    {i < steps.length - 1 && (
+                      <div className={`mx-2 mb-6 h-0.5 flex-1 rounded ${i < currentIdx ? 'bg-blue-600' : 'bg-zinc-200'}`} />
+                    )}
                   </div>
-                  <p className="mt-0.5 text-xs text-slate-500">Dilaporkan {formatDateTime(ticket.created_at)} • Diperbarui {formatDateTime(ticket.updated_at)}</p>
-                </div>
-                <TicketStatusBadge status={ticket.status} />
-              </div>
-              <div className="mt-4 rounded-md border border-slate-200 bg-white px-4 py-3">
-                <TicketPipeline status={ticket.status} />
-              </div>
+                );
+              })}
             </div>
-            <div className="px-5 py-5 sm:px-6">
-              <div className="grid gap-4 text-sm sm:grid-cols-2">
-                <div className="rounded-md border border-slate-200 p-3.5">
-                  <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-slate-400"><User className="h-3.5 w-3.5" /> Pelapor</p>
-                  <p className="mt-1.5 font-medium text-slate-900">{ticket.reporter_name}</p>
-                  <p className="font-mono text-[13px] text-slate-500">{ticket.reporter_nim}</p>
-                </div>
-                <div className="rounded-md border border-slate-200 p-3.5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Lokasi & Kategori</p>
-                  <p className="mt-1.5 font-medium text-slate-900">{ticket.labs?.name || 'Lab dihapus'} <span className="font-mono text-[13px] font-normal text-slate-500">• {ticket.pc_number}</span></p>
-                  <p className="text-[13px] text-slate-500">{ticket.category}</p>
-                </div>
+            {/* Detail */}
+            <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono text-lg font-bold text-zinc-900">{report.ticket_no}</span>
+                <StatusBadge status={report.status} />
               </div>
-              <div className="mt-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Deskripsi Kerusakan</p>
-                <p className="mt-1.5 whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm leading-6 text-slate-700">{ticket.description}</p>
+              <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                <p className="flex items-start gap-2 text-zinc-600">
+                  <MapPin size={16} className="mt-0.5 shrink-0" />
+                  <span>
+                    {report.labs?.code} - {report.labs?.name || 'Lab dihapus'}
+                  </span>
+                </p>
+                <p className="flex items-start gap-2 text-zinc-600">
+                  <Monitor size={16} className="mt-0.5 shrink-0" />
+                  <span className="font-mono font-semibold text-zinc-900">{report.pc_id}</span>
+                </p>
+                <p className="flex items-start gap-2 text-zinc-600">
+                  <User size={16} className="mt-0.5 shrink-0" />
+                  <span>
+                    {report.student_name} <span className="font-mono">({report.nim})</span>
+                  </span>
+                </p>
+                <p className="flex items-start gap-2 text-zinc-600">
+                  <CalendarClock size={16} className="mt-0.5 shrink-0" />
+                  <span>Dilaporkan: {formatDateTime(report.created_at)}</span>
+                </p>
               </div>
-              {ticket.photo_url && (
+              <div className="mt-4 border-t border-zinc-200 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Deskripsi Kerusakan</p>
+                <p className="mt-1 text-sm text-zinc-800">{report.description}</p>
+              </div>
+              {report.photo_url && (
                 <div className="mt-4">
-                  <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-slate-400"><Camera className="h-3.5 w-3.5" /> Foto Lampiran</p>
-                  <a href={ticket.photo_url} target="_blank" rel="noreferrer" className="mt-2 inline-block">
-                    <img src={ticket.photo_url} alt="Foto kerusakan" className="max-h-64 rounded-md border border-slate-200 object-contain" />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Foto Bukti</p>
+                  <a href={report.photo_url} target="_blank" rel="noreferrer">
+                    <img
+                      src={report.photo_url}
+                      alt="Bukti kerusakan"
+                      className="mt-2 max-h-56 rounded-lg border border-zinc-200"
+                    />
                   </a>
                 </div>
               )}
-              <div className="mt-4">
-                <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-slate-400"><StickyNote className="h-3.5 w-3.5" /> Catatan Teknisi</p>
-                {ticket.technician_note ? (
-                  <div className="mt-1.5 rounded-md border border-blue-200 bg-blue-50 px-3.5 py-3 text-sm leading-6 text-slate-700">
-                    {ticket.technician_note}
-                    {ticket.handled_by && <p className="mt-1.5 text-[13px] text-slate-500">Ditangani oleh: <span className="font-medium text-slate-700">{ticket.handled_by}</span></p>}
-                  </div>
-                ) : (
-                  <p className="mt-1.5 rounded-md border border-dashed border-slate-300 px-3.5 py-3 text-sm text-slate-400">Belum ada catatan dari teknisi.</p>
-                )}
-              </div>
-              <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row">
-                <Button onClick={() => { setQ(''); setTicket(null); setPhase('idle'); }}>Lacak Tiket Lain</Button>
-                <Link to="/lapor" className="inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium text-slate-600 hover:bg-slate-100">Buat Laporan Baru</Link>
-              </div>
+              {report.technician_note && (
+                <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                    <Wrench size={14} /> Catatan Teknisi
+                  </p>
+                  <p className="mt-1 text-sm text-blue-900">{report.technician_note}</p>
+                  <p className="mt-1 text-xs text-blue-600">Diperbarui: {formatDateTime(report.updated_at)}</p>
+                </div>
+              )}
             </div>
-          </Card>
+          </div>
         )}
       </div>
     </div>
